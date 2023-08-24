@@ -1,16 +1,37 @@
 require("dotenv").config();
 const express = require('express');
 const session = require('express-session');
+const MongoDBStore = require('connect-mongodb-session')(session);
 const axios = require('axios');
 const app = express();
 const port = process.env.PORT;
 
+// setup mongodb session
+const mongoDBStore = new MongoDBStore({
+    uri: process.env.MONGO_URI,
+    collection: 'admin-sessions',
+});
+mongoDBStore.on('error', (error) => {
+    console.log('[SESSION-ERROR] MongoDB session store error:', error);
+});
+mongoDBStore.on('connected', (error) => {
+    console.log('[SESSION] MongoDB session store : Connected');
+});
+
+
+// MongoDB ver
 app.use(session({
     secret: 'nonlnwza',
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
+    cookie: {
+        secure: false,
+        maxAge: 86400000,  // 86400000 ms = 1 day
+    },
+    store: mongoDBStore,
 }));
 
+// routes setup
 app.get('/auth/discord', (req, res) => {
     const params = new URLSearchParams({
         client_id: process.env.CLIENT_ID,
@@ -21,19 +42,18 @@ app.get('/auth/discord', (req, res) => {
 
     res.redirect(`https://discord.com/api/oauth2/authorize?${params}`);
 });
-
 app.get('/auth/discord/callback', async (req, res) => {
     const code = req.query.code;
     try {
-        const response = await axios.post('https://discord.com/api/oauth2/token', null, {
-            params: {
-                client_id: process.env.CLIENT_ID,
-                client_secret: process.env.CLIENT_SECRET,
-                code: code,
-                grant_type: 'authorization_code',
-                redirect_uri: process.env.REDIRECT_URI,
-            },
-        });
+        const response = await axios.post(
+            'https://discord.com/api/oauth2/token',
+            `client_id=${process.env.CLIENT_ID}&client_secret=${process.env.CLIENT_SECRET}&code=${code}&grant_type=authorization_code&redirect_uri=${process.env.REDIRECT_URI}`,
+            {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            }
+        );
 
         const accessToken = response.data.access_token;
 
@@ -55,9 +75,6 @@ app.get('/auth/discord/callback', async (req, res) => {
         res.status(500).send('An error occurred during login.');
     }
 });
-
-
-
 app.get('/dashboard', (req, res) => {
     // Check if the user is logged in
     if (!req.session.user) {
@@ -66,7 +83,8 @@ app.get('/dashboard', (req, res) => {
 
     // User is logged in, display the dashboard
     const user = req.session.user;
-    res.send(`Welcome to your dashboard, ${user.username}#${user.discriminator}!`);
+    // res.send(`Welcome to your dashboard, ${user.username}#${user.discriminator}!`);
+    res.json(user);
 });
 
 
