@@ -3,19 +3,23 @@ const express = require('express');
 const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session);
 const axios = require('axios');
+const http = require("http");
+const morgan = require("morgan");
 const app = express();
+const server = http.createServer(app);
 const port = process.env.PORT;
 
 // setup mongodb session
 const mongoDBStore = new MongoDBStore({
     uri: process.env.MONGO_URI,
-    collection: 'admin-sessions',
+    collection: 'test-discord-login-session',
 });
 mongoDBStore.on('error', (error) => {
     console.log('[SESSION-ERROR] MongoDB session store error:', error);
 });
 mongoDBStore.on('connected', (error) => {
     console.log('[SESSION] MongoDB session store : Connected');
+    startListenPort();
 });
 
 
@@ -30,6 +34,7 @@ app.use(session({
     },
     store: mongoDBStore,
 }));
+app.use(morgan("dev"));
 
 // routes setup
 app.get('/auth/discord', (req, res) => {
@@ -88,6 +93,14 @@ app.get('/dashboard', (req, res) => {
 });
 
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+// start server
+function startListenPort(){
+    server.listen(port);
+}
+server.on("listening", async() =>{
+    console.log(("[APP] ") + (`Localhost : http://127.0.0.1:${port}`));
+    console.log(("[APP] ") + (`Listening on port : `) + (port));
+});
+server.on("error", (err) =>{
+    console.log("[APP-ERROR] " + err);
 });
